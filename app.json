@@ -1,0 +1,31 @@
+{
+  "name": "Twilio Event Streams - Reporting Example",
+  "description": "A node express app that demonstrates processing of event streams data that is then used in an attempt to mirror flex insights reporting",
+  "repository": "",
+  "logo": "https://node-js-sample.herokuapp.com/node.png",
+  "keywords": [
+    "node",
+    "express",
+    "twilio",
+    "event streams",
+    "flex insights"
+  ],
+  "addons": [],
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "TWILIO_ACCOUNT_SID": {
+      "description": "Twilio Console Project Account Sid",
+      "value": "CHANGEME",
+      "required": true
+    },
+    "TWILIO_AUTH_TOKEN": {
+      "description": "Twilio Console Project Auth Token",
+      "value": "CHANGEME",
+      "required": true
+    }
+  }
+}
