@@ -3,9 +3,24 @@ var express = require("express");
 var path = require("path");
 var cookieParser = require("cookie-parser");
 var logger = require("morgan");
+var loki = require('lokijs');
 
 // init app
 var app = express();
+
+// init loki database
+var db = new loki('twilio-reporting-events');
+var trEvents = db.addCollection('trEvents', { indices: ["event_id"] });
+var viEvents = db.addCollection('viEvents');
+var conversations = db.addCollection('conversations', { indices: ["uuid"] });
+
+// make them available in the route
+app.set("db", db);
+app.set("trEvents", trEvents);
+app.set("viEvents", viEvents);
+app.set("conversations", conversations);
+
+
 
 // log associated twilio account info used for validating requests
 console.info(`AccountSid: ${process.env.TWILIO_ACCOUNT_SID}`);
@@ -15,7 +30,7 @@ console.info(`Auth Token: ${process.env.TWILIO_AUTH_TOKEN.slice(0, 5)} ...`);
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "pug");
 
-app.use(logger("dev"));
+//app.use(logger("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
