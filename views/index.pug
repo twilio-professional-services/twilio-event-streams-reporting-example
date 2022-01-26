@@ -2,4 +2,40 @@ extends layout
 
 block content
   h1= title
-  p Welcome to #{title}
+  
+  doctype html    
+
+  table(style='width:100%', border='1')
+    tr
+      th conv_id
+      th kind
+      th seg_id
+      th res_sid
+      th date
+      th time
+      th aband
+      th a_phase
+      th a_time
+      th queue_time
+      th ring_time
+      th talk_time
+      th wrapup_time
+
+    if (conversations.length == 0)
+      h2= "No Data Yet"
+    else
+      each n in conversations
+        tr
+          td= n.conversation_id.slice(0, 10)
+          td= n.segment_kind
+          td= n.segment_external_id.slice(0, 10)
+          td= n.reservation_sid.slice(0,10)
+          td= dateFormatter.format(n.date)
+          td= timeFormatter.format(n.time)
+          td= n.abandoned
+          td= n.abandoned_phase
+          td= n.abandon_time
+          td= n.queue_time
+          td= n.ring_time
+          td= n.talk_time
+          td= n.wrapup_time

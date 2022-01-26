@@ -20,11 +20,11 @@ const ERROR_LOGGING_CONVERSATION = "Unexpected error logging conversation: %s";
 // Segment types
 const QUEUE_SEGMENT = "QUEUE";
 const CONVO_SEG = "CONVERSATION";
-const CONVO_IN_PROG_SEG = "CONVERSATION IN PROGRESS"
-const CONVO_CORRUPTED = "CORRUPTED CONVERSATION"
-const CONVO_REJECTED = "REJECTED CONVERSATION"
-const CONVO_MISSED = "MISSED CONVERSATION"
-const CONVO_REVOKED = "REVOKED CONVERSATION" // TBD if this segment actually exists
+const CONVO_IN_PROG_SEG = "CONVERSATION IN PROGRESS";
+const CONVO_CORRUPTED = "CORRUPTED CONVERSATION";
+const CONVO_REJECTED = "REJECTED CONVERSATION";
+const CONVO_MISSED = "MISSED CONVERSATION";
+const CONVO_REVOKED = "REVOKED CONVERSATION"; // TBD if this segment actually exists
 const AGENT_STATE = "AGENT STATE";
 const AGENT_STATE_IN_PROGRESS = "AGENT STATE IN PROGRESS";
 
@@ -168,8 +168,6 @@ const getWrapupTimeForEvent = (trEvents, currentEvent) => {
 const insertConversationSegment = (conversations, segment) => {
   try {
     if (!segment.conversation_id || !segment.segment_kind || !segment.segment_external_id) throw new Exception("Missing key data");
-    console.log("Attempting to log conversation update");
-    console.log(uuidv4());
     conversations.insert({
       uuid: uuidv4(),
       // required elements  
@@ -180,7 +178,7 @@ const insertConversationSegment = (conversations, segment) => {
       // this doesnt actually exist on the flex insights data model
       // but is required to match the conversation in progress to the
       // correct reservation completed event.
-      reservation_sid: segment.reservation_sid,
+      reservation_sid: segment.reservation_sid || '',
 
       // ** facts AKA measures ******
       //TR Facts
@@ -219,7 +217,6 @@ const insertConversationSegment = (conversations, segment) => {
       abandoned_phase: segment.abandoned_phase
 
     })
-    console.log(conversations.find());
   } catch (err) {
     console.error(ERROR_LOGGING_CONVERSATION, err);
   }
@@ -234,7 +231,6 @@ const updateConversationSegment = (conversations, segment) => {
       ...segment
     }
     conversations.update(updated_conversation);
-    console.log(conversations.find());
   } catch (err) {
     console.error(ERROR_LOGGING_CONVERSATION, err);
   }
@@ -315,7 +311,10 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           // write rejected segment
           insertConversationSegment(conversations, convo_rejected_segment);
           break;
-        case ET_RESERVATION_TIMEOUT || ET_RESERVATION_CANCELLED:
+        // ET_RESERVATION_TIMEOUT TIMEOUT Falls through to ET_RESERVATION_CANCELLED
+        // as it has the same behavior
+        case ET_RESERVATION_TIMEOUT:
+        case ET_RESERVATION_CANCELLED:
           // calculate the stats
           var ring_time = getRingTimeForEvent(trEvents, currentEvent);
 
@@ -351,7 +350,10 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           var conversations = req.app.get("conversations");
           updateConversationSegment(conversations, convo_update);
           break;
-        case ET_TASK_CANCELLED || ET_TASK_TRANSFER_FAILED:
+        // ET_TASK_CANCELLED TIMEOUT Falls through to ET_TASK_TRANSFER_FAILED
+        // as it has the same behavior
+        case ET_TASK_CANCELLED:
+        case ET_TASK_TRANSFER_FAILED:
           // calculate the stats
           var queue_time = getTimeInQueueForEvent(trEvents, currentEvent);
 
@@ -361,7 +363,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             segment_kind: QUEUE_SEGMENT,
             segment_external_id: `${currentEvent.payload.task_sid}`,
             queue_time: queue_time,
-            abandon_time: abandon_time,
+            abandon_time: queue_time,
             abandoned_phase: "Queue",
             abandoned: "Yes"
           }
