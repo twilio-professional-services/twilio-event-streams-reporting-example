@@ -38,6 +38,7 @@ const ET_RESERVATION_ACCEPTED = "reservation.accepted";
 const ET_RESERVATION_REJECTED = "reservation.rejected";
 const ET_RESERVATION_TIMEOUT = "reservation.timeout";
 const ET_RESERVATION_CANCELLED = "reservation.canceled";
+const ET_RESERVATION_RESCINDED = "reservation.rescinded";
 const ET_RESERVATION_WRAPUP = "reservation.wrapup"
 const ET_RESERVATION_COMPLETED = "reservation.completed";
 const ET_TASK_CANCELLED = "task.canceled";
@@ -299,37 +300,34 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           insertConversationSegment(conversations, convo_in_progress_segment);
 
           break;
+        // all these exit points behave the same
+        // they just record a different segment type
         case ET_RESERVATION_REJECTED:
-          // calculate the stats
-          var ring_time = getRingTimeForEvent(trEvents, currentEvent);
-
-          // prepare the conversation REJECTED segment
-          var convo_rejected_segment = {
-            conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
-            segment_kind: CONVO_REJECTED,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
-            reservation_sid: currentEvent.payload.reservation_sid,
-            ring_time: ring_time,
-            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
-            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
-          }
-
-          // fetch conversations table
-          var conversations = req.app.get("conversations");
-          // write rejected segment
-          insertConversationSegment(conversations, convo_rejected_segment);
-          break;
-        // ET_RESERVATION_TIMEOUT TIMEOUT Falls through to ET_RESERVATION_CANCELLED
-        // as it has the same behavior
         case ET_RESERVATION_TIMEOUT:
         case ET_RESERVATION_CANCELLED:
+        case ET_RESERVATION_RESCINDED:
+
+          var segment_kind;
+          switch (eventtype) {
+            case ET_RESERVATION_REJECTED:
+              segment_kind = CONVO_REJECTED;
+              break
+            case ET_RESERVATION_TIMEOUT:
+            case ET_RESERVATION_CANCELLED:
+              segment_kind = CONVO_MISSED;
+              break
+            case ET_RESERVATION_RESCINDED:
+              segment_kind = CONVO_REVOKED;
+              break
+          }
+
           // calculate the stats
           var ring_time = getRingTimeForEvent(trEvents, currentEvent);
 
           // prepare the conversation REJECTED segment
-          var convo_timeout_segment = {
+          var convo_failed_segment = {
             conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
-            segment_kind: CONVO_MISSED,
+            segment_kind,
             segment_external_id: `${currentEvent.payload.task_sid}`,
             reservation_sid: currentEvent.payload.reservation_sid,
             ring_time: ring_time,
@@ -340,7 +338,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           // fetch conversations table
           var conversations = req.app.get("conversations");
           // write rejected segment
-          insertConversationSegment(conversations, convo_timeout_segment);
+          insertConversationSegment(conversations, convo_failed_segment);
           break;
         case ET_RESERVATION_COMPLETED:
           // calculate the talk time
