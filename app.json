@@ -23,7 +23,17 @@
       "required": true
     },
     "TWILIO_AUTH_TOKEN": {
-      "description": "Twilio Console Project Auth Token",
+      "description": "Twilio Console Project Auth Token - used to validate incoming requests",
+      "value": "CHANGEME",
+      "required": true
+    },
+    "LOCALE": {
+      "description": "Locale as setup in flex insights eg en-US",
+      "value": "CHANGEME",
+      "required": true
+    },
+    "TIMEZONE": {
+      "description": "Timezone of flex insights eg \"UTC\" or \"America/New_York\"",
       "value": "CHANGEME",
       "required": true
     }
