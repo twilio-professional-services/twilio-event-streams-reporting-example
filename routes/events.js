@@ -51,13 +51,14 @@ const logCloudEvent = (cloudEvent, index) => {
   //console.debug("type: ", cloudEvent.type);
 }
 
-const getLastQueueEntryEventForTask = (trEvents, task_sid) => {
+// identify the last entry event preceeding the current exit event
+const getLastQueueEntryEventForTask = (trEvents, task_sid, exitTimestamp) => {
   try {
     return trEvents.chain()
       .find({ "payload.task_sid": task_sid })
       .where(function (obj) {
-        var { eventtype } = obj.payload;
-        return (eventtype === ET_TASK_QUEUE_ENTERED || eventtype == ET_TASK_TRANSFER_INITIATED)
+        var { eventtype, timestamp } = obj.payload;
+        return ((timestamp < exitTimestamp) && (eventtype === ET_TASK_QUEUE_ENTERED || eventtype == ET_TASK_TRANSFER_INITIATED))
       })
       .simplesort("payload.timestamp", true)
       .data()[0]
@@ -117,7 +118,7 @@ const getConvoInProgress = (conversations, reservation_sid) => {
 }
 
 const getTimeInQueueForEvent = (trEvents, currentEvent) => {
-  var queueEnteredEvent = getLastQueueEntryEventForTask(trEvents, currentEvent.payload.task_sid);
+  var queueEnteredEvent = getLastQueueEntryEventForTask(trEvents, currentEvent.payload.task_sid, currentEvent.payload.timestamp);
   // we need to set the milliseconds to 0 before subtracting
   // as flex insights ignores those.
   var startDate = new Date(queueEnteredEvent.payload.timestamp).setMilliseconds(0)
