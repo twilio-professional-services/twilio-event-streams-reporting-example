@@ -1,19 +1,16 @@
 var uuidv4 = require('uuid').v4;
 var express = require("express");
-var debug = require("debug")("event-streams-backend:event");
-
-
+var logTaskRouter = require("debug")("event-streams-backend:tr-event");
+var logConversation = require("debug")("event-streams-backend:conversations");
+var logeventStream = require("debug")("event-streams-backend:event-stream-event");
+var logUnhandledEvent = require("debug")("event-streams-backend:unhandled-events");
 var authenticate = require("../middleware/authenticate-twilio-signature");
 var router = express.Router();
-
-const TASKROUTER = 'com.twilio.taskrouter';
-const VOICE_INSIGHTS = 'com.twilio.voice.insights';
-
 
 const GUIDE = "https://www.twilio.com/docs/events/webhook-quickstart#read-and-parse-the-data";
 const INVALID_REQUEST_ERROR = `Invalid request: Expexted JSON array of CloudEvents. See ${GUIDE} for more information`;
 const PARSE_EVENT_ERROR = `Error processing array item %d, with error: %s`
-const UNHANDLED_EVENT = "Unhandled event: %s";
+const UNHANDLED_EVENT = "Event cached but doesnt generate any segments: %s";
 const UNEXPECTED_EVENT_TYPE = "Unexpected event type recieved: %s";
 const ERROR_FETCHING_DATA = "Unexpected error fetching data for task sid %s: %s";
 const ERROR_LOGGING_CONVERSATION = "Unexpected error logging conversation: %s";
@@ -25,10 +22,12 @@ const CONVO_IN_PROG_SEG = "CONVERSATION IN PROGRESS";
 const CONVO_CORRUPTED = "CORRUPTED CONVERSATION";
 const CONVO_REJECTED = "REJECTED CONVERSATION";
 const CONVO_MISSED = "MISSED CONVERSATION";
-const CONVO_REVOKED = "REVOKED CONVERSATION"; // TBD if this segment actually exists
-const AGENT_STATE = "AGENT STATE";
-const AGENT_STATE_IN_PROGRESS = "AGENT STATE IN PROGRESS";
+const CONVO_REVOKED = "REVOKED CONVERSATION";
+const AGENT_STATE = "AGENT STATE"; //TO-DO
+const AGENT_STATE_IN_PROGRESS = "AGENT STATE IN PROGRESS"; //TO-DO
 
+// EVENT PRODUCT TYPES
+const TASKROUTER = 'com.twilio.taskrouter';
 
 // EVENT TYPES
 const ET_TASK_QUEUE_ENTERED = "task-queue.entered";
@@ -45,11 +44,10 @@ const ET_TASK_CANCELLED = "task.canceled";
 const ET_TASK_TRANSFER_FAILED = "task.transfer-failed";
 
 
-
-
 const logCloudEvent = (cloudEvent, index) => {
-  //console.debug("id: ", cloudEvent.id);
-  //console.debug("type: ", cloudEvent.type);
+  logeventStream("id: ", cloudEvent.id);
+  logeventStream("type: ", cloudEvent.type);
+  logeventStream("index: ", index);
 }
 
 // identify the last entry event preceeding the current exit event
@@ -171,7 +169,7 @@ const getWrapupTimeForEvent = (trEvents, currentEvent) => {
 const insertConversationSegment = (conversations, segment) => {
   try {
     if (!segment.conversation_id || !segment.segment_kind || !segment.segment_external_id) throw new Exception("Missing key data");
-    conversations.insert({
+    logConversation(conversations.insert({
       uuid: uuidv4(),
       // required elements  
       conversation_id: segment.conversation_id,
@@ -219,7 +217,7 @@ const insertConversationSegment = (conversations, segment) => {
       abandoned: segment.abandoned || 'N',
       abandoned_phase: segment.abandoned_phase
 
-    })
+    }));
   } catch (err) {
     console.error(ERROR_LOGGING_CONVERSATION, err);
   }
@@ -233,7 +231,7 @@ const updateConversationSegment = (conversations, segment) => {
       ...convo_in_prog,
       ...segment
     }
-    conversations.update(updated_conversation);
+    logConversation(conversations.update(updated_conversation));
   } catch (err) {
     console.error(ERROR_LOGGING_CONVERSATION, err);
   }
@@ -263,6 +261,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
     if (event.type.startsWith(TASKROUTER)) {
       var trEvents = req.app.get("trEvents");
       var currentEvent = cacheTaskRouterEvent(trEvents, event);
+      logTaskRouter(currentEvent);
 
       var { eventtype } = currentEvent.payload;
       switch (eventtype) {
@@ -399,14 +398,11 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           insertConversationSegment(conversations, conversation)
           break;
         default:
-          debug(UNHANDLED_EVENT, eventtype);
+          logUnhandledEvent(UNHANDLED_EVENT, eventtype);
       }
 
-    } else if (event.type.startsWith(VOICE_INSIGHTS)) {
-      var viEvents = req.app.get("viEvents");
-      viEvents.insert({ "data": event.data.payload });
     } else {
-      console.error(UNEXPECTED_EVENT_TYPE, event.type);
+      logUnhandledEvent(UNEXPECTED_EVENT_TYPE, event.type);
     }
   } catch (error) {
     console.error(PARSE_EVENT_ERROR, index, error);

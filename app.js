@@ -12,13 +12,11 @@ var app = express();
 // init loki database
 var db = new loki('twilio-reporting-events');
 var trEvents = db.addCollection('trEvents', { indices: ["event_id"] });
-var viEvents = db.addCollection('viEvents');
 var conversations = db.addCollection('conversations', { indices: ["uuid"] });
 
 // make them available in the route
 app.set("db", db);
 app.set("trEvents", trEvents);
-app.set("viEvents", viEvents);
 app.set("conversations", conversations);
 
 
