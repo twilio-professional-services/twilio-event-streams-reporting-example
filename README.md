@@ -36,6 +36,7 @@ This project is a node express app that demonstrates processing of event streams
    - reservation.rejected
    - reservation.timeout
    - reservation.canceled
+   - reservation.rescinded
    - reservation.wrapup
    - reservation.completed
    - task.canceled
