@@ -122,7 +122,7 @@ const getTimeInQueueForEvent = (trEvents, currentEvent) => {
   // as flex insights ignores those.
   var startDate = new Date(queueEnteredEvent.payload.timestamp).setMilliseconds(0)
   var endDate = new Date(currentEvent.payload.timestamp).setMilliseconds(0);
-  return Math.round((endDate - startDate) / 1000);
+  return { timeInQueue: Math.round((endDate - startDate) / 1000), startDate }
 }
 
 const getRingTimeForEvent = (trEvents, currentEvent) => {
@@ -266,7 +266,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
       switch (eventtype) {
         case ET_RESERVATION_ACCEPTED:
           // calculate the stats
-          var queue_time = getTimeInQueueForEvent(trEvents, currentEvent);
+          var queueData = getTimeInQueueForEvent(trEvents, currentEvent);
           var ring_time = getRingTimeForEvent(trEvents, currentEvent);
 
           // prepare the queue segment
@@ -274,7 +274,9 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: QUEUE_SEGMENT,
             segment_external_id: `${currentEvent.payload.task_sid}`,
-            queue_time: queue_time,
+            queue_time: queueData.timeInQueue,
+            date: queueData.startDate,
+            time: queueData.startDate
           }
 
           // prepare the conversation segment
@@ -283,8 +285,10 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             segment_kind: CONVO_IN_PROG_SEG,
             segment_external_id: `${currentEvent.payload.task_sid}`,
             reservation_sid: currentEvent.payload.reservation_sid,
-            queue_time: queue_time,
+            queue_time: queueData.timeInQueue,
             ring_time: ring_time,
+            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
+            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
@@ -305,6 +309,8 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             segment_external_id: `${currentEvent.payload.task_sid}`,
             reservation_sid: currentEvent.payload.reservation_sid,
             ring_time: ring_time,
+            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
+            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
@@ -326,6 +332,8 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             segment_external_id: `${currentEvent.payload.task_sid}`,
             reservation_sid: currentEvent.payload.reservation_sid,
             ring_time: ring_time,
+            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
+            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
@@ -356,17 +364,19 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
         case ET_TASK_CANCELLED:
         case ET_TASK_TRANSFER_FAILED:
           // calculate the stats
-          var queue_time = getTimeInQueueForEvent(trEvents, currentEvent);
+          var queueData = getTimeInQueueForEvent(trEvents, currentEvent);
 
           // prepare the queue segment
           var queue_segment = {
             conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: QUEUE_SEGMENT,
             segment_external_id: `${currentEvent.payload.task_sid}`,
-            queue_time: queue_time,
-            abandon_time: queue_time,
+            queue_time: queueData.timeInQueue,
+            abandon_time: queueData.timeInQueue,
             abandoned_phase: "Queue",
-            abandoned: "Yes"
+            abandoned: "Yes",
+            date: queueData.startDate,
+            time: queueData.startDate
           }
 
           // prepare the conversation segment that is written by flex insights
@@ -375,10 +385,12 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: CONVO_SEG,
             segment_external_id: `${currentEvent.payload.task_sid}`,
-            queue_time: queue_time,
-            abandon_time: queue_time,
+            queue_time: queueData.timeInQueue,
+            abandon_time: queueData.timeInQueue,
             abandoned_phase: "Queue",
-            abandoned: "Yes"
+            abandoned: "Yes",
+            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
+            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
