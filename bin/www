@@ -9,9 +9,8 @@ dotenv.config();
 
 var App = require("../app");
 var app = App.app;
-var outboundDialingWSS = App.outboundDialingWSS;
-var realtimeStatsWSS = App.realtimeStatsWSS;
-var debug = require("debug")("outbound-dialing-backend:server");
+
+var debug = require("debug")("event-streams-backend:server");
 var http = require("http");
 var url = require("url");
 
@@ -35,25 +34,6 @@ var server = http.createServer(app);
 server.listen(port);
 server.on("error", onError);
 server.on("listening", onListening);
-
-//added for websocket management
-server.on("upgrade", function upgrade(request, socket, head) {
-  const pathname = url.parse(request.url).pathname;
-
-  if (pathname === "/websocket/outboundDial") {
-    outboundDialingWSS.handleUpgrade(request, socket, head, function done(ws) {
-      outboundDialingWSS.emit("connection", ws, request);
-      console.debug("New outboundDial websocket created");
-    });
-  } else if (pathname === "/websocket/realtimeStats") {
-    realtimeStatsWSS.handleUpgrade(request, socket, head, function done(ws) {
-      realtimeStatsWSS.emit("connection", ws, request);
-      console.debug("New realtimeStats websocket created");
-    });
-  } else {
-    socket.destroy();
-  }
-});
 
 /**
  * Normalize a port into a number, string, or false.

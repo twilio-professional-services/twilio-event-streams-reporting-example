@@ -1,5 +1,6 @@
 var uuidv4 = require('uuid').v4;
 var express = require("express");
+var debug = require("debug")("event-streams-backend:event");
 
 
 var authenticate = require("../middleware/authenticate-twilio-signature");
@@ -47,7 +48,7 @@ const ET_TASK_TRANSFER_FAILED = "task.transfer-failed";
 
 const logCloudEvent = (cloudEvent, index) => {
   //console.debug("id: ", cloudEvent.id);
-  console.debug("type: ", cloudEvent.type);
+  //console.debug("type: ", cloudEvent.type);
 }
 
 const getLastQueueEntryEventForTask = (trEvents, task_sid) => {
@@ -387,7 +388,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           insertConversationSegment(conversations, conversation)
           break;
         default:
-          console.debug(UNHANDLED_EVENT, eventtype);
+          debug(UNHANDLED_EVENT, eventtype);
       }
 
     } else if (event.type.startsWith(VOICE_INSIGHTS)) {

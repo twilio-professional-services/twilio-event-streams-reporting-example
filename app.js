@@ -3,6 +3,7 @@ var express = require("express");
 var path = require("path");
 var cookieParser = require("cookie-parser");
 var logger = require("morgan");
+var debug = require("debug")("event-streams-backend:init");
 var loki = require('lokijs');
 
 // init app
@@ -23,14 +24,15 @@ app.set("conversations", conversations);
 
 
 // log associated twilio account info used for validating requests
-console.info(`AccountSid: ${process.env.TWILIO_ACCOUNT_SID}`);
-console.info(`Auth Token: ${process.env.TWILIO_AUTH_TOKEN.slice(0, 5)} ...`);
+
+debug(`AccountSid: ${process.env.TWILIO_ACCOUNT_SID}`);
+debug(`Auth Token: ${process.env.TWILIO_AUTH_TOKEN.slice(0, 5)} ...`);
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "pug");
 
-//app.use(logger("dev"));
+app.use(logger("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
