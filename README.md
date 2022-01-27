@@ -2,6 +2,10 @@
 
 This project is a node express app that demonstrates processing of event streams data that is then used to model data as it appears in flex insights reporting
 
+# Disclaimer
+
+This project is provided 'as is' to demonstrate how data can be transformed and is not provided as a production ready solution.  It comes with no warranty and no support and it is not designed for scale. Anyone using this project should consider challenges with consuming events out of order and at large volumes.
+
 # Deploying to heroku
 
 1. Use this link to begin [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/jhunter-twilio/twilio-event-streams-reporting-example/tree/main)
