@@ -1,7 +1,7 @@
 // app is global variable initialized in app.js
 var trEvents = app.get("trEvents");
 var conversations = app.get("conversations");
-var uuidv4 = require('uuid').v4;
+var uuid = require('uuid').v4;
 var express = require("express");
 var logTaskRouter = require("debug")("event-streams-backend:tr-event");
 var logConversation = require("debug")("event-streams-backend:conversations");
@@ -175,12 +175,12 @@ const getWrapupTimeForCompletedEvent = (currentEvent) => {
 
 const insertConversationSegment = (segmentDetails, currentEvent) => {
   try {
-    var defaultSegment = generateSegmentFromCustomData(currentEvent);
+    var defaultSegment = generateDefaultSegmentWithCustomData(currentEvent);
 
     if (!segmentDetails.segment_kind) throw new Exception("Missing key data");
     logConversation(conversations.insert({
       ...defaultSegment,
-      uuid: uuidv4(),
+      uuid: uuid(),
       ...segmentDetails
     }));
   } catch (err) {
@@ -203,23 +203,39 @@ const updateConversationInProgressSegment = (segment, reservation_sid) => {
 }
 
 // method for transforming data common to all segment types
-const generateSegmentFromCustomData = (currentEvent) => {
-  var { task_attributes, task_sid, reservation_sid, worker_sid, timestamp } = currentEvent.payload;
-  var custom_data = task_attributes?.conversations;
+const generateDefaultSegmentWithCustomData = (currentEvent) => {
+  var {
+    task_attributes,
+    worker_attributes,
+    task_sid,
+    reservation_sid,
+    worker_sid,
+    timestamp,
+    task_completed_reason,
+    task_canceled_reason,
+    task_channel_unique_name,
+    workflow_name,
+    task_queue_name,
+    task_queue_sid,
+    worker_activity_name } = currentEvent.payload;
+  var custom_data = {
+    ...task_attributes?.conversations,
+    ...worker_attributes
+  }
   return segment_data = {
-
-    // required elements where present
-    conversation_id: custom_data?.conversation_id || task_sid || worker_sid || uuidv4(),
-    segment_external_id: task_sid || worker_sid || uuidv4(),
-
+    // required elements
+    conversation_id: custom_data?.conversation_id || task_sid || worker_sid || uuid(),
+    segment_external_id: task_sid || worker_sid || uuid(),
     // this doesnt actually exist on the flex insights data model
     // or of it does it is behind the scenes 
     // but is required to match the conversation in progress to the
     // correct reservation completed event.
     reservation_sid: reservation_sid || '',
 
-    // ** facts AKA measures ******
-    //TR Facts - common to all channels
+    //#region FACTS
+    // FACTS AKA measures *******
+    // *************************************
+    // *** TR Facts - common to all channels
     activity_time: custom_data?.activity_time,
     abandon_time: custom_data?.abandon_time,
     queue_time: custom_data?.queue_time,
@@ -227,14 +243,12 @@ const generateSegmentFromCustomData = (currentEvent) => {
     talk_time: custom_data?.talk_time,
     wrapup_time: custom_data?.wrapup_time,
     time_in_seconds: custom_data?.time_in_seconds,
-
     // Voice Facts - single change
     // these are not available through event streams at this time
     agent_talk_time: custom_data?.agent_talk_time,
     longest_silence_before_agent: custom_data?.longest_silence_before_agent,
     longest_talk_by_agent: custom_data?.longest_talk_by_agent,
     silence_time: custom_data?.silence_time,
-
     // Voice Facts - dual channel
     // these are not available through event streams at this time
     cross_talk_time: custom_data?.cross_talk_time,
@@ -258,12 +272,69 @@ const generateSegmentFromCustomData = (currentEvent) => {
     // with work done via flex plugins
     ivr_time: custom_data?.ivr_time,
     priority: custom_data?.priority,
+    //#endregion
 
+    //#region ATTRIBUTES
     // ** ATTRIBUTES ***
     date: new Date(timestamp).setMilliseconds(0), // this will be formatted later
     time: new Date(timestamp).setMilliseconds(0), // this will be formatted later
     abandoned: custom_data?.abandoned || 'N',
-    abandoned_phase: custom_data?.abandoned_phase
+    abandoned_phase: custom_data?.abandoned_phase,
+    activity: custom_data?.activity || worker_activity_name,
+    campaign: custom_data?.campaign,
+    case: custom_data?.case,
+    channel: custom_data?.channel || (task_channel_unique_name === "voice" ? "Call" : undefined) || (task_channel_unique_name === "chat" ? "Chat" : task_channel_unique_name),
+    content: custom_data?.content,
+    conversation_attribute_1: custom_data?.conversation_attribute_1,
+    conversation_attribute_2: custom_data?.conversation_attribute_2,
+    conversation_attribute_3: custom_data?.conversation_attribute_3,
+    conversation_attribute_4: custom_data?.conversation_attribute_4,
+    conversation_attribute_5: custom_data?.conversation_attribute_5,
+    conversation_attribute_6: custom_data?.conversation_attribute_6,
+    conversation_attribute_7: custom_data?.conversation_attribute_7,
+    conversation_attribute_8: custom_data?.conversation_attribute_8,
+    conversation_attribute_9: custom_data?.conversation_attribute_9,
+    conversation_attribute_10: custom_data?.conversation_attribute_10,
+    conversation_label_1: custom_data?.conversation_label_1,
+    conversation_label_2: custom_data?.conversation_label_2,
+    conversation_label_3: custom_data?.conversation_label_3,
+    conversation_label_4: custom_data?.conversation_label_4,
+    conversation_label_5: custom_data?.conversation_label_5,
+    conversation_label_6: custom_data?.conversation_label_6,
+    conversation_label_7: custom_data?.conversation_label_7,
+    conversation_label_8: custom_data?.conversation_label_8,
+    conversation_label_9: custom_data?.conversation_label_9,
+    conversation_label_10: custom_data?.conversation_label_10,
+    destination: custom_data?.destination,
+    direction: custom_data?.direction || (task_attributes.direction === "inbound" ? "Inbound" : undefined) || (task_attributes.direction === "internal" ? "Internal" : undefined) || (task_attributes.direction === "outbound" ? "Outbound" : "Inbound"),
+    external_contact: custom_data?.external_contact || (task_attributes.direction === "outbound" ? task_attributes.from : task_attributes.to),
+    followed_by: custom_data?.followed_by,
+    handling_department_id: custom_data?.department_id,
+    handling_department_name: custom_data?.department_name,
+    handling_department_name_in_hierarchy: Array.isArray(custom_data?.handling_department_name_in_hierarchy) ? custom_data?.handling_department_name_in_hierarchy.join(" ▸ ") : custom_data?.handling_department_name_in_hierarchy,
+    handling_team_id: custom_data?.team_id || custom_data?.team || task_queue_sid,
+    handling_team_name: custom_data?.team_name || custom_data?.team || task_queue_name,
+    handling_team_name_in_hierarchy: Array.isArray(custom_data?.team_name_in_hierarchy) ? custom_data?.team_name_in_hierarchy.join(" ▸ ") : custom_data?.team_name_in_hierarchy,
+    // hang_up_by does actually come from voice insights.call summary events on event streams
+    // but doesnt get populated by flex insights by default
+    hang_up_by: custom_data?.hang_up_by,
+    in_business_hours: custom_data?.in_business_hours,
+    initiated_by: custom_data?.initiated_by,
+    initiative: custom_data?.initiative,
+    ivr_path: custom_data?.ivr_path,
+    language: custom_data?.language,
+    order: custom_data?.order,
+    outcome: custom_data?.outcome || task_attributes.reason || task_completed_reason || task_canceled_reason,
+    preceded_by: custom_data?.preceded_by,
+    productive: custom_data?.productive,
+    queue: custom_data?.queue || task_queue_name,
+    segment_link: custom_data?.segment_link,
+    service_level: custom_data?.service_level,
+    source: custom_data?.source,
+    virtual: custom_data?.virtual,
+    workflow: custom_data?.workflow || workflow_name,
+    //#endregion
+
   }
 }
 
@@ -356,12 +427,13 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           // calculate the talk time
           var talk_time = getTalkTimeForCompletedEvent(currentEvent);
           var wrapup_time = getWrapupTimeForCompletedEvent(currentEvent);
-          var { reservation_sid } = currentEvent.payload;
+          var { reservation_sid, task_attributes } = currentEvent.payload;
 
           var convo_update = {
             segment_kind: CONVO_SEG,
             talk_time: talk_time,
-            wrapup_time: wrapup_time
+            wrapup_time: wrapup_time,
+            segment_link: task_attributes.conversations?.segment_link
           }
 
           updateConversationInProgressSegment(convo_update, reservation_sid);
