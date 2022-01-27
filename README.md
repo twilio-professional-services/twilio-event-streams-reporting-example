@@ -12,8 +12,9 @@ This project is provided 'as is' to demonstrate how data can be transformed and 
 
 2. Populate the given variables when prompted
 
-   - `TWILIO_OUTBOUND_WORKFLOW_SID` - the SID of the workflow you just created - used for creating tasks
-   - `TWILIO_ACCOUNT_SID` - the account sid of your twilio account - used for calling Twilio APIs
+
+   - `TWILIO_ACCOUNT_SID` - the account sid of your twilio account - used for calling Twilio APIs //TODO
+   - `TWILIO_AUTH_TOKEN` - the auth token for your twilio account - used for the authentication of requests //TODO
    - `LOCALE` - Locale as setup in flex insights eg en-US
    - `TIMEZONE` - Timezone of flex insights eg "UTC" or "America/New_York"
 
