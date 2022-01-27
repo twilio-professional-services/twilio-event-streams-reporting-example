@@ -24,7 +24,7 @@ const ERROR_LOGGING_CONVERSATION = "Unexpected error logging conversation: %s";
 const QUEUE_SEGMENT = "QUEUE";
 const CONVO_SEG = "CONVERSATION";
 const CONVO_IN_PROG_SEG = "CONVERSATION IN PROGRESS";
-const CONVO_CORRUPTED = "CORRUPTED CONVERSATION";
+const CONVO_CORRUPTED = "CORRUPTED CONVERSATION"; //TO-DO
 const CONVO_REJECTED = "REJECTED CONVERSATION";
 const CONVO_MISSED = "MISSED CONVERSATION";
 const CONVO_REVOKED = "REVOKED CONVERSATION";
@@ -55,8 +55,9 @@ const logCloudEvent = (cloudEvent, index) => {
   logeventStream("index: ", index);
 }
 
-// identify the last entry event preceeding the current exit event
-const getLastQueueEntryEventForTask = (task_sid, exitTimestamp) => {
+// identify the last entry event preceeding the current exit event by timestamp
+// as only one reservation can be in queue at a time
+const getQueueEntryEventByTaskExitTime = (task_sid, exitTimestamp) => {
   try {
     return trEvents.chain()
       .find({ "payload.task_sid": task_sid })
@@ -111,7 +112,7 @@ const getAcceptedEventForReservation = (reservation_sid) => {
   }
 }
 
-const getConvoInProgress = (reservation_sid) => {
+const getConvoInProgressSegment = (reservation_sid) => {
   try {
     return conversations.chain()
       .find({ reservation_sid, "segment_kind": CONVO_IN_PROG_SEG })
@@ -121,54 +122,55 @@ const getConvoInProgress = (reservation_sid) => {
   }
 }
 
-const getQueueDataForEvent = (currentEvent) => {
-  var queueEnteredEvent = getLastQueueEntryEventForTask(currentEvent.payload.task_sid, currentEvent.payload.timestamp);
+const getQueueDataForExitEvent = (currentEvent) => {
+  var { task_sid, timestamp: exitTimestamp } = currentEvent.payload;
+  var { timestamp: startTimeStamp } = getQueueEntryEventByTaskExitTime(task_sid, exitTimestamp)?.payload
   // we need to set the milliseconds to 0 before subtracting
   // as flex insights ignores those.
-  var startDate = new Date(queueEnteredEvent.payload.timestamp).setMilliseconds(0)
-  var endDate = new Date(currentEvent.payload.timestamp).setMilliseconds(0);
+  var startDate = new Date(startTimeStamp).setMilliseconds(0)
+  var endDate = new Date(exitTimestamp).setMilliseconds(0);
   return { timeInQueue: Math.round((endDate - startDate) / 1000), startDate }
 }
 
 const getRingTimeForEvent = (currentEvent) => {
-  var reservationCreatedEvent = getCreatedEventForReservation(currentEvent.payload.reservation_sid);
+  var { reservation_sid, timestamp: endtimeStamp } = currentEvent.payload
+  var { timestamp: startTimeStamp } = getCreatedEventForReservation(reservation_sid)?.payload
   // we need to set the milliseconds to 0 before subtracting
   // as flex insights ignores those.
-  var startDate = new Date(reservationCreatedEvent.payload.timestamp).setMilliseconds(0)
-  var endDate = new Date(currentEvent.payload.timestamp).setMilliseconds(0)
+  var startDate = new Date(startTimeStamp).setMilliseconds(0)
+  var endDate = new Date(endtimeStamp).setMilliseconds(0)
   return Math.round((endDate - startDate) / 1000);
 }
 
-const getTalkTimeForEvent = (currentEvent) => {
-  var wrapupEvent = getWrapupEventForReservation(currentEvent.payload.reservation_sid);
-  var acceptedEvent = getAcceptedEventForReservation(currentEvent.payload.reservation_sid);
+const getTalkTimeForCompletedEvent = (currentEvent) => {
+  var { reservation_sid, timestamp: completedTimestamp } = currentEvent.payload;
+  var { timestamp: wrapupTimestamp } = getWrapupEventForReservation(reservation_sid)?.payload
+  var { timestamp: acceptedTimestamp } = getAcceptedEventForReservation(reservation_sid)?.payload
 
-  var acceptedTime = new Date(acceptedEvent.payload.timestamp).setMilliseconds(0);
+  var acceptedTime = new Date(acceptedTimestamp).setMilliseconds(0);
 
   // if there was a wrapup event, we calc talk time from that
-  if (wrapupEvent) {
-    var wrapTime = new Date(wrapupEvent.payload.timestamp).setMilliseconds(0);
+  if (wrapupTimestamp) {
+    var wrapTime = new Date(wrapupTimestamp).setMilliseconds(0);
     return Math.round((wrapTime - acceptedTime) / 1000)
   }
 
   // otherwise we calc talktime from this event, AKA reservation completed event
-  var completedTime = new Date(currentEvent.payload.timestamp).setMilliseconds(0);
+  var completedTime = new Date(completedTimestamp).setMilliseconds(0);
   return Math.round((completedTime - acceptedTime) / 1000)
-
 }
 
-const getWrapupTimeForEvent = (currentEvent) => {
-  var wrapupEvent = getWrapupEventForReservation(currentEvent.payload.reservation_sid);
+const getWrapupTimeForCompletedEvent = (currentEvent) => {
+  var { reservation_sid, timestamp: completedTimeStamp } = currentEvent.payload;
+  var { timestamp: wrapupEventTimeStamp } = getWrapupEventForReservation(reservation_sid)?.payload
 
-  // if there was a wrap time calculate it
-  if (wrapupEvent) {
-    var completedTime = new Date(currentEvent.payload.timestamp).setMilliseconds(0);
-    var wrapTime = new Date(wrapupEvent.payload.timestamp).setMilliseconds(0);
-    return Math.round((completedTime - wrapTime) / 1000)
-  }
+  // if there was no wrapup time return 0
+  // otherwise calculate it 
+  if (!wrapupEventTimeStamp) return 0
 
-  // if there was no wrap event always return 0
-  return 0
+  var completedTime = new Date(completedTimeStamp).setMilliseconds(0);
+  var wrapTime = new Date(wrapupEventTimeStamp).setMilliseconds(0);
+  return Math.round((completedTime - wrapTime) / 1000);
 }
 
 const insertConversationSegment = (segmentDetails, currentEvent) => {
@@ -189,7 +191,7 @@ const insertConversationSegment = (segmentDetails, currentEvent) => {
 const updateConversationInProgressSegment = (segment, reservation_sid) => {
   try {
 
-    const convo_in_prog = getConvoInProgress(reservation_sid);
+    const convo_in_prog = getConvoInProgressSegment(reservation_sid);
     const updated_conversation = {
       ...convo_in_prog,
       ...segment
@@ -294,7 +296,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
       switch (eventtype) {
         case ET_RESERVATION_ACCEPTED:
           // calculate the stats
-          var queueData = getQueueDataForEvent(currentEvent);
+          var queueData = getQueueDataForExitEvent(currentEvent);
           var ring_time = getRingTimeForEvent(currentEvent);
 
           // prepare the queue segment
@@ -352,8 +354,8 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           break;
         case ET_RESERVATION_COMPLETED:
           // calculate the talk time
-          var talk_time = getTalkTimeForEvent(currentEvent);
-          var wrapup_time = getWrapupTimeForEvent(currentEvent);
+          var talk_time = getTalkTimeForCompletedEvent(currentEvent);
+          var wrapup_time = getWrapupTimeForCompletedEvent(currentEvent);
           var { reservation_sid } = currentEvent.payload;
 
           var convo_update = {
@@ -369,7 +371,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
         case ET_TASK_CANCELLED:
         case ET_TASK_TRANSFER_FAILED:
           // calculate the stats
-          var queueData = getQueueDataForEvent(currentEvent);
+          var queueData = getQueueDataForExitEvent(currentEvent);
 
           // prepare the queue segment
           var queue_segment = {
