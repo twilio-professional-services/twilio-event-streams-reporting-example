@@ -1,3 +1,5 @@
+// app is global variable initialized in app.js
+var trEvents = app.get("trEvents");
 var uuidv4 = require('uuid').v4;
 var express = require("express");
 var logTaskRouter = require("debug")("event-streams-backend:tr-event");
@@ -6,6 +8,8 @@ var logeventStream = require("debug")("event-streams-backend:event-stream-event"
 var logUnhandledEvent = require("debug")("event-streams-backend:unhandled-events");
 var authenticate = require("../middleware/authenticate-twilio-signature");
 var router = express.Router();
+
+
 
 const GUIDE = "https://www.twilio.com/docs/events/webhook-quickstart#read-and-parse-the-data";
 const INVALID_REQUEST_ERROR = `Invalid request: Expexted JSON array of CloudEvents. See ${GUIDE} for more information`;
@@ -51,7 +55,7 @@ const logCloudEvent = (cloudEvent, index) => {
 }
 
 // identify the last entry event preceeding the current exit event
-const getLastQueueEntryEventForTask = (trEvents, task_sid, exitTimestamp) => {
+const getLastQueueEntryEventForTask = (task_sid, exitTimestamp) => {
   try {
     return trEvents.chain()
       .find({ "payload.task_sid": task_sid })
@@ -66,7 +70,7 @@ const getLastQueueEntryEventForTask = (trEvents, task_sid, exitTimestamp) => {
   }
 }
 
-const getCreatedEventForReservation = (trEvents, reservation_sid) => {
+const getCreatedEventForReservation = (reservation_sid) => {
   try {
     return trEvents.chain()
       .find({ "payload.reservation_sid": reservation_sid })
@@ -81,7 +85,7 @@ const getCreatedEventForReservation = (trEvents, reservation_sid) => {
   }
 }
 
-const getWrapupEventForReservation = (trEvents, reservation_sid) => {
+const getWrapupEventForReservation = (reservation_sid) => {
   try {
     return trEvents.chain()
       .find({ "payload.reservation_sid": reservation_sid })
@@ -96,7 +100,7 @@ const getWrapupEventForReservation = (trEvents, reservation_sid) => {
   }
 }
 
-const getAcceptedEventForReservation = (trEvents, reservation_sid) => {
+const getAcceptedEventForReservation = (reservation_sid) => {
   try {
     return trEvents.chain()
       .find({ "payload.reservation_sid": reservation_sid, "payload.eventtype": ET_RESERVATION_ACCEPTED })
@@ -116,8 +120,8 @@ const getConvoInProgress = (conversations, reservation_sid) => {
   }
 }
 
-const getQueueDataForEvent = (trEvents, currentEvent) => {
-  var queueEnteredEvent = getLastQueueEntryEventForTask(trEvents, currentEvent.payload.task_sid, currentEvent.payload.timestamp);
+const getQueueDataForEvent = (currentEvent) => {
+  var queueEnteredEvent = getLastQueueEntryEventForTask(currentEvent.payload.task_sid, currentEvent.payload.timestamp);
   // we need to set the milliseconds to 0 before subtracting
   // as flex insights ignores those.
   var startDate = new Date(queueEnteredEvent.payload.timestamp).setMilliseconds(0)
@@ -125,8 +129,8 @@ const getQueueDataForEvent = (trEvents, currentEvent) => {
   return { timeInQueue: Math.round((endDate - startDate) / 1000), startDate }
 }
 
-const getRingTimeForEvent = (trEvents, currentEvent) => {
-  var reservationCreatedEvent = getCreatedEventForReservation(trEvents, currentEvent.payload.reservation_sid);
+const getRingTimeForEvent = (currentEvent) => {
+  var reservationCreatedEvent = getCreatedEventForReservation(currentEvent.payload.reservation_sid);
   // we need to set the milliseconds to 0 before subtracting
   // as flex insights ignores those.
   var startDate = new Date(reservationCreatedEvent.payload.timestamp).setMilliseconds(0)
@@ -134,9 +138,9 @@ const getRingTimeForEvent = (trEvents, currentEvent) => {
   return Math.round((endDate - startDate) / 1000);
 }
 
-const getTalkTimeForEvent = (trEvents, currentEvent) => {
-  var wrapupEvent = getWrapupEventForReservation(trEvents, currentEvent.payload.reservation_sid);
-  var acceptedEvent = getAcceptedEventForReservation(trEvents, currentEvent.payload.reservation_sid);
+const getTalkTimeForEvent = (currentEvent) => {
+  var wrapupEvent = getWrapupEventForReservation(currentEvent.payload.reservation_sid);
+  var acceptedEvent = getAcceptedEventForReservation(currentEvent.payload.reservation_sid);
 
   var acceptedTime = new Date(acceptedEvent.payload.timestamp).setMilliseconds(0);
 
@@ -152,8 +156,8 @@ const getTalkTimeForEvent = (trEvents, currentEvent) => {
 
 }
 
-const getWrapupTimeForEvent = (trEvents, currentEvent) => {
-  var wrapupEvent = getWrapupEventForReservation(trEvents, currentEvent.payload.reservation_sid);
+const getWrapupTimeForEvent = (currentEvent) => {
+  var wrapupEvent = getWrapupEventForReservation(currentEvent.payload.reservation_sid);
 
   // if there was a wrap time calculate it
   if (wrapupEvent) {
@@ -260,7 +264,7 @@ const generateSegmentFromCustomData = (currentEvent) => {
   }
 }
 
-const cacheTaskRouterEvent = (trEvents, event) => {
+const cacheTaskRouterEvent = (event) => {
   return trEvents.insert({
     "event_id": event.id,
     "payload": {
@@ -282,16 +286,15 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
     logCloudEvent(event, index);
 
     if (event.type.startsWith(TASKROUTER)) {
-      var trEvents = req.app.get("trEvents");
-      var currentEvent = cacheTaskRouterEvent(trEvents, event);
+      var currentEvent = cacheTaskRouterEvent(event);
       logTaskRouter(currentEvent);
 
       var { eventtype } = currentEvent.payload;
       switch (eventtype) {
         case ET_RESERVATION_ACCEPTED:
           // calculate the stats
-          var queueData = getQueueDataForEvent(trEvents, currentEvent);
-          var ring_time = getRingTimeForEvent(trEvents, currentEvent);
+          var queueData = getQueueDataForEvent(currentEvent);
+          var ring_time = getRingTimeForEvent(currentEvent);
 
           // prepare the queue segment
           var queue_segment = {
@@ -337,7 +340,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           }
 
           // calculate the stats
-          var ring_time = getRingTimeForEvent(trEvents, currentEvent);
+          var ring_time = getRingTimeForEvent(currentEvent);
 
           // prepare the conversation REJECTED segment
           var convo_failed_segment = {
@@ -352,8 +355,8 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           break;
         case ET_RESERVATION_COMPLETED:
           // calculate the talk time
-          var talk_time = getTalkTimeForEvent(trEvents, currentEvent);
-          var wrapup_time = getWrapupTimeForEvent(trEvents, currentEvent);
+          var talk_time = getTalkTimeForEvent(currentEvent);
+          var wrapup_time = getWrapupTimeForEvent(currentEvent);
           var { reservation_sid } = currentEvent.payload;
 
           var convo_update = {
@@ -371,7 +374,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
         case ET_TASK_CANCELLED:
         case ET_TASK_TRANSFER_FAILED:
           // calculate the stats
-          var queueData = getQueueDataForEvent(trEvents, currentEvent);
+          var queueData = getQueueDataForEvent(currentEvent);
 
           // prepare the queue segment
           var queue_segment = {

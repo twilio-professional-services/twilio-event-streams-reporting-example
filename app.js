@@ -7,7 +7,7 @@ var debug = require("debug")("event-streams-backend:init");
 var loki = require('lokijs');
 
 // init app
-var app = express();
+app = express();
 
 // init loki database
 var db = new loki('twilio-reporting-events');
