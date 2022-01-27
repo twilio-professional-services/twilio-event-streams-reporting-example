@@ -116,7 +116,7 @@ const getConvoInProgress = (conversations, reservation_sid) => {
   }
 }
 
-const getTimeInQueueForEvent = (trEvents, currentEvent) => {
+const getQueueDataForEvent = (trEvents, currentEvent) => {
   var queueEnteredEvent = getLastQueueEntryEventForTask(trEvents, currentEvent.payload.task_sid, currentEvent.payload.timestamp);
   // we need to set the milliseconds to 0 before subtracting
   // as flex insights ignores those.
@@ -166,67 +166,25 @@ const getWrapupTimeForEvent = (trEvents, currentEvent) => {
   return 0
 }
 
-const insertConversationSegment = (conversations, segment) => {
+const insertConversationSegment = (conversations, segmentDetails, currentEvent) => {
   try {
-    if (!segment.conversation_id || !segment.segment_kind || !segment.segment_external_id) throw new Exception("Missing key data");
+    var defaultSegment = generateSegmentFromCustomData(currentEvent);
+
+    if (!segmentDetails.segment_kind) throw new Exception("Missing key data");
     logConversation(conversations.insert({
+      ...defaultSegment,
       uuid: uuidv4(),
-      // required elements  
-      conversation_id: segment.conversation_id,
-      segment_kind: segment.segment_kind,
-      segment_external_id: segment.segment_external_id,
-
-      // this doesnt actually exist on the flex insights data model
-      // but is required to match the conversation in progress to the
-      // correct reservation completed event.
-      reservation_sid: segment.reservation_sid || '',
-
-      // ** facts AKA measures ******
-      //TR Facts
-      activity_time: segment.activity_time,
-      abandon_time: segment.abandon_time,
-      queue_time: segment.queue_time,
-      ring_time: segment.ring_time,
-      talk_time: segment.talk_time,
-      wrapup_time: segment.wrapup_time,
-      time_in_seconds: segment.time_in_seconds,
-
-      // Voice Facts (requires dual channel recording setup)
-      agent_talk_time: segment.agent_talk_time,
-      cross_talk_time: segment.cross_talk_time,
-      customer_talk_time: segment.customer_talk_time,
-      longest_silence_before_agent: segment.longest_silence_before_agent,
-      longest_silence_before_customer: segment.longest_silence_before_customer,
-      longest_talk_by_agent: segment.longest_talk_by_agent,
-      longest_talk_by_customer: segment.longest_talk_by_customer,
-      silence_time: segment.silence_time,
-
-      // Voice facts from conference events
-      hold_time: segment.hold_time,
-
-      // Chat facts not populated in flex insights
-      average_response_time: segment.average_response_time,
-      first_response_time: segment.first_response_time,
-      focus_time: segment.focus_time,
-      ivr_time: segment.ivr_time,
-      priority: segment.priority,
-
-      // attributes
-      date: segment.date || new Date(), // to be converted to date of flex insights instance
-      time: segment.time || new Date(), // to be converted to seconds from midnight in insight instance timezone
-      abandoned: segment.abandoned || 'N',
-      abandoned_phase: segment.abandoned_phase
-
+      ...segmentDetails
     }));
   } catch (err) {
     console.error(ERROR_LOGGING_CONVERSATION, err);
   }
 }
 
-const updateConversationSegment = (conversations, segment) => {
+const updateConversationInProgressSegment = (conversations, segment, reservation_sid) => {
   try {
 
-    const convo_in_prog = getConvoInProgress(conversations, segment.reservation_sid);
+    const convo_in_prog = getConvoInProgress(conversations, reservation_sid);
     const updated_conversation = {
       ...convo_in_prog,
       ...segment
@@ -234,6 +192,71 @@ const updateConversationSegment = (conversations, segment) => {
     logConversation(conversations.update(updated_conversation));
   } catch (err) {
     console.error(ERROR_LOGGING_CONVERSATION, err);
+  }
+}
+
+// method for transforming data common to all segment types
+const generateSegmentFromCustomData = (currentEvent) => {
+  var { task_attributes, task_sid, reservation_sid, worker_sid, timestamp } = currentEvent.payload;
+  var custom_data = task_attributes?.conversations;
+  return segment_data = {
+
+    // required elements where present
+    conversation_id: custom_data?.conversation_id || task_sid || worker_sid || uuidv4(),
+    segment_external_id: task_sid || worker_sid || uuidv4(),
+
+    // this doesnt actually exist on the flex insights data model
+    // or of it does it is behind the scenes 
+    // but is required to match the conversation in progress to the
+    // correct reservation completed event.
+    reservation_sid: reservation_sid || '',
+
+    // ** facts AKA measures ******
+    //TR Facts - common to all channels
+    activity_time: custom_data?.activity_time,
+    abandon_time: custom_data?.abandon_time,
+    queue_time: custom_data?.queue_time,
+    ring_time: custom_data?.ring_time,
+    talk_time: custom_data?.talk_time,
+    wrapup_time: custom_data?.wrapup_time,
+    time_in_seconds: custom_data?.time_in_seconds,
+
+    // Voice Facts - single change
+    // these are not available through event streams at this time
+    agent_talk_time: custom_data?.agent_talk_time,
+    longest_silence_before_agent: custom_data?.longest_silence_before_agent,
+    longest_talk_by_agent: custom_data?.longest_talk_by_agent,
+    silence_time: custom_data?.silence_time,
+
+    // Voice Facts - dual channel
+    // these are not available through event streams at this time
+    cross_talk_time: custom_data?.cross_talk_time,
+    customer_talk_time: custom_data?.customer_talk_time,
+    longest_silence_before_customer: custom_data?.longest_silence_before_customer,
+    longest_talk_by_customer: custom_data?.longest_talk_by_customer,
+
+    // Voice facts from conference events
+    // these are not available through event streams at this time
+    hold_time: custom_data?.hold_time,
+
+    // Chat facts not populated in flex insights
+    // by default but can be populated from custom attributes
+    // with work done via flex plugins.
+    average_response_time: custom_data?.average_response_time,
+    first_response_time: custom_data?.first_response_time,
+    focus_time: custom_data?.focus_time,
+
+    // Other facts nott populated in flxe insights
+    // by default but could be populated form custom attributes
+    // with work done via flex plugins
+    ivr_time: custom_data?.ivr_time,
+    priority: custom_data?.priority,
+
+    // ** ATTRIBUTES ***
+    date: new Date(timestamp).setMilliseconds(0), // this will be formatted later
+    time: new Date(timestamp).setMilliseconds(0), // this will be formatted later
+    abandoned: custom_data?.abandoned || 'N',
+    abandoned_phase: custom_data?.abandoned_phase
   }
 }
 
@@ -267,14 +290,12 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
       switch (eventtype) {
         case ET_RESERVATION_ACCEPTED:
           // calculate the stats
-          var queueData = getTimeInQueueForEvent(trEvents, currentEvent);
+          var queueData = getQueueDataForEvent(trEvents, currentEvent);
           var ring_time = getRingTimeForEvent(trEvents, currentEvent);
 
           // prepare the queue segment
           var queue_segment = {
-            conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: QUEUE_SEGMENT,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
             queue_time: queueData.timeInQueue,
             date: queueData.startDate,
             time: queueData.startDate
@@ -282,21 +303,16 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
 
           // prepare the conversation segment
           var convo_in_progress_segment = {
-            conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: CONVO_IN_PROG_SEG,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
-            reservation_sid: currentEvent.payload.reservation_sid,
             queue_time: queueData.timeInQueue,
             ring_time: ring_time,
-            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
-            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
           var conversations = req.app.get("conversations");
           // write segments to conversation table
-          insertConversationSegment(conversations, queue_segment);
-          insertConversationSegment(conversations, convo_in_progress_segment);
+          insertConversationSegment(conversations, queue_segment, currentEvent);
+          insertConversationSegment(conversations, convo_in_progress_segment, currentEvent);
 
           break;
         // all these exit points behave the same
@@ -325,50 +341,41 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
 
           // prepare the conversation REJECTED segment
           var convo_failed_segment = {
-            conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
-            reservation_sid: currentEvent.payload.reservation_sid,
             ring_time: ring_time,
-            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
-            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
           var conversations = req.app.get("conversations");
           // write rejected segment
-          insertConversationSegment(conversations, convo_failed_segment);
+          insertConversationSegment(conversations, convo_failed_segment, currentEvent);
           break;
         case ET_RESERVATION_COMPLETED:
           // calculate the talk time
           var talk_time = getTalkTimeForEvent(trEvents, currentEvent);
           var wrapup_time = getWrapupTimeForEvent(trEvents, currentEvent);
+          var { reservation_sid } = currentEvent.payload;
 
           var convo_update = {
-            conversation_id: currentEvent.payload.task_attributes.conversation_id || currentEvent.payload.task_sid,
             segment_kind: CONVO_SEG,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
-            reservation_sid: currentEvent.payload.reservation_sid,
             talk_time: talk_time,
             wrapup_time: wrapup_time
           }
 
           // update conversation in progress
           var conversations = req.app.get("conversations");
-          updateConversationSegment(conversations, convo_update);
+          updateConversationInProgressSegment(conversations, convo_update, reservation_sid);
           break;
         // ET_TASK_CANCELLED TIMEOUT Falls through to ET_TASK_TRANSFER_FAILED
         // as it has the same behavior
         case ET_TASK_CANCELLED:
         case ET_TASK_TRANSFER_FAILED:
           // calculate the stats
-          var queueData = getTimeInQueueForEvent(trEvents, currentEvent);
+          var queueData = getQueueDataForEvent(trEvents, currentEvent);
 
           // prepare the queue segment
           var queue_segment = {
-            conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: QUEUE_SEGMENT,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
             queue_time: queueData.timeInQueue,
             abandon_time: queueData.timeInQueue,
             abandoned_phase: "Queue",
@@ -380,22 +387,18 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           // prepare the conversation segment that is written by flex insights
           // when a call is abandoned in queue
           var conversation = {
-            conversation_id: currentEvent.payload.task_attributes.conversations?.conversation_id || currentEvent.payload.task_sid,
             segment_kind: CONVO_SEG,
-            segment_external_id: `${currentEvent.payload.task_sid}`,
             queue_time: queueData.timeInQueue,
             abandon_time: queueData.timeInQueue,
             abandoned_phase: "Queue",
             abandoned: "Yes",
-            date: new Date(currentEvent.payload.timestamp).setMilliseconds(0),
-            time: new Date(currentEvent.payload.timestamp).setMilliseconds(0)
           }
 
           // fetch conversations table
           var conversations = req.app.get("conversations");
           // write segments to conversation table
-          insertConversationSegment(conversations, queue_segment);
-          insertConversationSegment(conversations, conversation)
+          insertConversationSegment(conversations, queue_segment, currentEvent);
+          insertConversationSegment(conversations, conversation, currentEvent)
           break;
         default:
           logUnhandledEvent(UNHANDLED_EVENT, eventtype);
