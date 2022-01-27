@@ -1,5 +1,6 @@
 // app is global variable initialized in app.js
 var trEvents = app.get("trEvents");
+var conversations = app.get("conversations");
 var uuidv4 = require('uuid').v4;
 var express = require("express");
 var logTaskRouter = require("debug")("event-streams-backend:tr-event");
@@ -110,7 +111,7 @@ const getAcceptedEventForReservation = (reservation_sid) => {
   }
 }
 
-const getConvoInProgress = (conversations, reservation_sid) => {
+const getConvoInProgress = (reservation_sid) => {
   try {
     return conversations.chain()
       .find({ reservation_sid, "segment_kind": CONVO_IN_PROG_SEG })
@@ -170,7 +171,7 @@ const getWrapupTimeForEvent = (currentEvent) => {
   return 0
 }
 
-const insertConversationSegment = (conversations, segmentDetails, currentEvent) => {
+const insertConversationSegment = (segmentDetails, currentEvent) => {
   try {
     var defaultSegment = generateSegmentFromCustomData(currentEvent);
 
@@ -185,10 +186,10 @@ const insertConversationSegment = (conversations, segmentDetails, currentEvent) 
   }
 }
 
-const updateConversationInProgressSegment = (conversations, segment, reservation_sid) => {
+const updateConversationInProgressSegment = (segment, reservation_sid) => {
   try {
 
-    const convo_in_prog = getConvoInProgress(conversations, reservation_sid);
+    const convo_in_prog = getConvoInProgress(reservation_sid);
     const updated_conversation = {
       ...convo_in_prog,
       ...segment
@@ -311,11 +312,9 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             ring_time: ring_time,
           }
 
-          // fetch conversations table
-          var conversations = req.app.get("conversations");
           // write segments to conversation table
-          insertConversationSegment(conversations, queue_segment, currentEvent);
-          insertConversationSegment(conversations, convo_in_progress_segment, currentEvent);
+          insertConversationSegment(queue_segment, currentEvent);
+          insertConversationSegment(convo_in_progress_segment, currentEvent);
 
           break;
         // all these exit points behave the same
@@ -348,10 +347,8 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             ring_time: ring_time,
           }
 
-          // fetch conversations table
-          var conversations = req.app.get("conversations");
-          // write rejected segment
-          insertConversationSegment(conversations, convo_failed_segment, currentEvent);
+          // write failed segment
+          insertConversationSegment(convo_failed_segment, currentEvent);
           break;
         case ET_RESERVATION_COMPLETED:
           // calculate the talk time
@@ -365,9 +362,7 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             wrapup_time: wrapup_time
           }
 
-          // update conversation in progress
-          var conversations = req.app.get("conversations");
-          updateConversationInProgressSegment(conversations, convo_update, reservation_sid);
+          updateConversationInProgressSegment(convo_update, reservation_sid);
           break;
         // ET_TASK_CANCELLED TIMEOUT Falls through to ET_TASK_TRANSFER_FAILED
         // as it has the same behavior
@@ -397,11 +392,9 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
             abandoned: "Yes",
           }
 
-          // fetch conversations table
-          var conversations = req.app.get("conversations");
           // write segments to conversation table
-          insertConversationSegment(conversations, queue_segment, currentEvent);
-          insertConversationSegment(conversations, conversation, currentEvent)
+          insertConversationSegment(queue_segment, currentEvent);
+          insertConversationSegment(conversation, currentEvent)
           break;
         default:
           logUnhandledEvent(UNHANDLED_EVENT, eventtype);
