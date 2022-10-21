@@ -1,10 +1,13 @@
 // app is global variable initialized in app.js
 var trEvents = app.get("trEvents");
 var conversations = app.get("conversations");
+var agents = app.get("agents");
 var uuid = require('uuid').v4;
+const e = require('express');
 var express = require("express");
 var logTaskRouter = require("debug")("event-streams-backend:tr-event");
 var logConversation = require("debug")("event-streams-backend:conversations");
+var logAgents = require("debug")("event-streams-backend:agents");
 var logeventStream = require("debug")("event-streams-backend:event-stream-event");
 var logUnhandledEvent = require("debug")("event-streams-backend:unhandled-events");
 var authenticate = require("../middleware/authenticate-twilio-signature");
@@ -19,6 +22,7 @@ const UNHANDLED_EVENT = "Event cached but doesnt generate any segments: %s";
 const UNEXPECTED_EVENT_TYPE = "Unexpected event type recieved: %s";
 const ERROR_FETCHING_DATA = "Unexpected error fetching data for task sid %s: %s";
 const ERROR_LOGGING_CONVERSATION = "Unexpected error logging conversation: %s";
+const ERROR_LOGGING_AGENT = "Unexpected error logging agent: %s";
 
 // Segment types
 const QUEUE_SEGMENT = "QUEUE";
@@ -28,8 +32,8 @@ const CONVO_CORRUPTED = "CORRUPTED CONVERSATION"; //TO-DO
 const CONVO_REJECTED = "REJECTED CONVERSATION";
 const CONVO_MISSED = "MISSED CONVERSATION";
 const CONVO_REVOKED = "REVOKED CONVERSATION";
-const AGENT_STATE = "AGENT STATE"; //TO-DO
-const AGENT_STATE_IN_PROGRESS = "AGENT STATE IN PROGRESS"; //TO-DO
+const AGENT_STATUS = "AGENT STATUS"; //TO-DO
+const AGENT_STATUS_IN_PROGRESS = "AGENT STATUS IN PROGRESS"; //TO-DO
 
 // EVENT PRODUCT TYPES
 const TASKROUTER = 'com.twilio.taskrouter';
@@ -47,6 +51,14 @@ const ET_RESERVATION_WRAPUP = "reservation.wrapup"
 const ET_RESERVATION_COMPLETED = "reservation.completed";
 const ET_TASK_CANCELLED = "task.canceled";
 const ET_TASK_TRANSFER_FAILED = "task.transfer-failed";
+const ET_WORKER_CREATED = "worker.created";
+const ET_WORKER_DELETED = "worker.deleted";
+const ET_WORKER_ACTIVITY_UPDATED = "worker.activity.update";
+const ET_WORKER_ATTRIBUTES_UPDATED = "worker.attributes.update";
+
+// AGENT DEFINITION STATUS
+const AGENT_ACTIVE = "Active";
+const AGENT_DELETED = "Deleted";
 
 
 const logCloudEvent = (cloudEvent, index) => {
@@ -125,6 +137,26 @@ const getConvoInProgressSegment = (reservation_sid) => {
   }
 }
 
+const getAgentStatusInProgressSegment = (agent_uuid) => {
+  try {
+    return conversations.chain()
+      .find({ agent_uuid, "segment_kind": AGENT_STATUS_IN_PROGRESS })
+      .data()[0]
+  } catch (err) {
+    console.error(ERROR_FETCHING_DATA, agent_uuid, err);
+  }
+}
+
+const getAgentEntry = (agent_uuid) => {
+  try {
+    return agents.chain()
+      .find({ agent_uuid })
+      .data()[0]
+  } catch (err) {
+    console.error(ERROR_FETCHING_DATA, agent_uuid, err);
+  }
+}
+
 const getQueueDataForExitEvent = (currentEvent) => {
   var { task_sid, timestamp: exitTimestamp } = currentEvent.payload;
   var { timestamp: startTimeStamp } = getQueueEntryEventByTaskExitTime(task_sid, exitTimestamp)?.payload
@@ -191,6 +223,78 @@ const insertConversationSegment = (segmentDetails, currentEvent) => {
   }
 }
 
+const insertOrUpdateAgent = (currentEvent, insert, status) => {
+  try {
+    var agentUpdateEntry = generateAgentEntry(currentEvent);
+    var { timestamp } = currentEvent.payload;
+    if (!agentUpdateEntry.agent_uuid) throw new Exception("Missing key data");
+    date_left = status === AGENT_DELETED? new Date(timestamp).setMilliseconds(0) : undefined;
+
+    if(insert){
+      logAgents(agents.insert({
+        ...agentUpdateEntry,
+        date_joined: new Date(timestamp).setMilliseconds(0),
+        state: status
+      }));
+    } else {
+      agentsEntry = getAgentEntry(agentUpdateEntry.agent_uuid);
+      logAgents(agents.update({
+        ...agentsEntry,
+        ...agentUpdateEntry,
+        state: status,
+        date_left
+      }));
+    }
+  } catch (err) {
+    if(err.message?.includes("Please save the document first by using insert()") && !insert){
+      insertOrUpdateAgent(currentEvent, true, status);
+    }
+    else{
+      console.error(ERROR_LOGGING_AGENT, err);
+    }
+  }
+}
+
+const generateAgentEntry = (currentEvent) => {
+  const {
+    worker_attributes,
+    worker_sid,
+  } = currentEvent.payload
+  return {
+    agent_uuid: worker_sid,
+    attribute_1: worker_attributes.agent_attribute_1,
+    attribute_2: worker_attributes.agent_attribute_2,
+    attribute_3: worker_attributes.agent_attribute_3,
+    email: worker_attributes.email,
+    // id that comes off the agent attributes, representing an external agent id
+    agent_id: worker_attributes.agent_id,
+    location: worker_attributes.location,
+    phone: worker_attributes.phone,
+    // comma seperated values of the roles array as a string
+    role: Array.isArray(worker_attributes.roles) ? worker_attributes.roles.join(", ") : worker_attributes.role,
+    // status is Active, Deleted
+    // handled by the insert / update methods
+    state: undefined,
+
+    // flex insights actually only stores the department id on the 
+    // agent table and links to a department table.
+    // agent table updating events that use the same 
+    // department id but different name will update the name for that department id
+    // in the department table. In doing so this will change the historical record in flex insights
+    // of that department name.  Keeping this flat and historically accurate
+    // for now for simplicity but users of this solution to note whether they 
+    // want to match flex insights exactly or not in this event
+    // the same is  true for team id
+    team_id: worker_attributes.team_id,
+    team_name: worker_attributes.team_name,
+    team_name_in_hierarchy: worker_attributes.team_name_in_hierarchy,
+    manager: worker_attributes.manager,
+    department_id: worker_attributes.department_id,
+    department_name: worker_attributes.department_name,
+    department_name_in_hierarchy: worker_attributes.department_name_in_hierarchy
+  }
+}
+
 const updateConversationInProgressSegment = (segment, reservation_sid) => {
   try {
 
@@ -201,7 +305,31 @@ const updateConversationInProgressSegment = (segment, reservation_sid) => {
     }
     logConversation(conversations.update(updated_conversation));
   } catch (err) {
-    console.error(ERROR_LOGGING_CONVERSATION, err);
+    if(err.message?.includes("Please save the document first by using insert()")){
+      logConversation("Looks like conversation entry does not exist for updating, perhaps session started after original entity was written");
+    }
+    else{
+      console.error(ERROR_LOGGING_CONVERSATION, err);
+    }
+  }
+}
+
+const updateAgentStatusInProgressSegment = (segment, agent_uuid) => {
+  try {
+
+    const agent_status_in_progress = getAgentStatusInProgressSegment(agent_uuid);
+    const updated_conversation = {
+      ...agent_status_in_progress,
+      ...segment
+    }
+    logConversation(conversations.update(updated_conversation));
+  } catch (err) {
+    if(err.message?.includes("Please save the document first by using insert()")){
+      logConversation("Looks like conversation entry does not exist for updating, perhaps session started after original entity was written");
+    }
+    else{
+      console.error(ERROR_LOGGING_CONVERSATION, err);
+    }
   }
 }
 
@@ -220,7 +348,8 @@ const generateDefaultSegmentWithCustomData = (currentEvent) => {
     workflow_name,
     task_queue_name,
     task_queue_sid,
-    worker_activity_name } = currentEvent.payload;
+    worker_activity_name,
+    worker_time_in_previous_activity } = currentEvent.payload;
   var custom_data = {
     ...task_attributes?.conversations,
     ...worker_attributes
@@ -234,12 +363,14 @@ const generateDefaultSegmentWithCustomData = (currentEvent) => {
     // but is required to match the conversation in progress to the
     // correct reservation completed event.
     reservation_sid: reservation_sid || '',
+    // same for this but to link to the agent table.
+    agent_uuid: worker_sid || '',
 
     //#region FACTS
     // FACTS AKA measures *******
     // *************************************
     // *** TR Facts - common to all channels
-    activity_time: custom_data?.activity_time,
+    activity_time: worker_time_in_previous_activity,
     abandon_time: custom_data?.abandon_time,
     queue_time: custom_data?.queue_time,
     ring_time: custom_data?.ring_time,
@@ -312,12 +443,24 @@ const generateDefaultSegmentWithCustomData = (currentEvent) => {
     direction: custom_data?.direction || (task_attributes.direction === "inbound" ? "Inbound" : undefined) || (task_attributes.direction === "internal" ? "Internal" : undefined) || (task_attributes.direction === "outbound" ? "Outbound" : "Inbound"),
     external_contact: custom_data?.external_contact || (task_attributes.direction === "outbound" ? task_attributes.from : task_attributes.to),
     followed_by: custom_data?.followed_by,
+
+    // flex insights actually only storres the department id on the 
+    // conversations table and links to a department table.
+    // Conversation generating events that use the same 
+    // department id but different name will update the name for that department id
+    // in the departmen table. In doing so this will change the historical record in flex insights
+    // of that department name.  Keeping this flat and historically accurate
+    // for now for simplicity but users of this solution to note whether they 
+    // want to match flex insights exactly or not in this event
     handling_department_id: custom_data?.department_id,
     handling_department_name: custom_data?.department_name,
     handling_department_name_in_hierarchy: Array.isArray(custom_data?.handling_department_name_in_hierarchy) ? custom_data?.handling_department_name_in_hierarchy.join(" ▸ ") : custom_data?.handling_department_name_in_hierarchy,
+   
+    // the above statement for department_id is also true for team_id
     handling_team_id: custom_data?.team_id || custom_data?.team || task_queue_sid,
     handling_team_name: custom_data?.team_name || custom_data?.team || task_queue_name,
     handling_team_name_in_hierarchy: Array.isArray(custom_data?.team_name_in_hierarchy) ? custom_data?.team_name_in_hierarchy.join(" ▸ ") : custom_data?.team_name_in_hierarchy,
+    
     // hang_up_by does actually come from voice insights.call summary events on event streams
     // but doesnt get populated by flex insights by default
     hang_up_by: custom_data?.hang_up_by,
@@ -472,6 +615,52 @@ const parseEventStreamsCloudEvent = (req, event, index, array) => {
           // write segments to conversation table
           insertConversationSegment(queue_segment, currentEvent);
           insertConversationSegment(conversation, currentEvent)
+          break;
+        case ET_WORKER_CREATED:
+          var { worker_activity_name } = currentEvent.payload;
+          // prepare the agent_in_progress segment
+          var agent_in_progress_segment = {
+            segment_kind: AGENT_STATUS_IN_PROGRESS,
+            activity: worker_activity_name,
+          }
+          // insert "current state" of agent to agent table
+          insertOrUpdateAgent(currentEvent, true, AGENT_ACTIVE);
+          // insert "agent in progress" segment on conversation table
+          insertConversationSegment(agent_in_progress_segment, currentEvent);
+          break;
+        case ET_WORKER_DELETED:
+          // update agent state to deleted
+          insertOrUpdateAgent(currentEvent, false, AGENT_DELETED);
+          break;
+        case ET_WORKER_ATTRIBUTES_UPDATED:
+          // update agent attributes on "current state" agent table
+          insertOrUpdateAgent(currentEvent, false, AGENT_ACTIVE)
+          break;
+        case ET_WORKER_ACTIVITY_UPDATED:
+          var { 
+            worker_sid: agent_uuid, 
+            worker_time_in_previous_activity,
+            worker_activity_name } = currentEvent.payload;
+          // prepare the agent_in_progress segment
+          var agent_status = {
+            segment_kind: AGENT_STATUS,
+            activity_time: worker_time_in_previous_activity
+          }
+          var agent_in_progress_segment = {
+            segment_kind: AGENT_STATUS_IN_PROGRESS,
+            activity: worker_activity_name,
+            activity_time: undefined,
+          }
+
+          // we really only need to insert the agent if it doesnt
+          // exist already as updating each time is inefficient
+          insertOrUpdateAgent(currentEvent, false, AGENT_ACTIVE)
+
+          // move the previous "agent state in progress" to "agent state"
+          // insert the new "agent in progress state"
+          updateAgentStatusInProgressSegment(agent_status, agent_uuid); 
+          insertConversationSegment(agent_in_progress_segment, currentEvent);
+
           break;
         default:
           logUnhandledEvent(UNHANDLED_EVENT, eventtype);
