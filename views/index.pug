@@ -28,12 +28,13 @@ block content
         tr
           td= n.agent_uuid.slice(0, 10)
           td= dateFormatter.format(n.date_joined) 
-          td= dateFormatter.format(n.date_left)
+          //td= dateFormatter.format(n.date_left)
+          td= n.date_left
           td= n.email
           td= n.agent_id
           td= n.role
-          td= n.team
-          td= n.department
+          td= n.team_name
+          td= n.department_name
           td= n.manager
           td= n.email
           td= n.state
