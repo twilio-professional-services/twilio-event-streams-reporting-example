@@ -2,9 +2,15 @@
 
 This project is a node express app that demonstrates processing of event streams data that is then used to model data as it appears in flex insights reporting
 
-# Disclaimer
+# screenshots
+![alt text](screenshots/sample.gif)
 
-This project is provided 'as is' to demonstrate how data can be transformed and is not provided as a production ready solution.  It comes with no warranty and no support and it is not designed for scale. Anyone using this project should consider challenges with consuming events out of order and at large volumes.
+# Disclaimer
+As Open Source Software from Twilio Professional Services, this project is not supported by Twilio Support. This software is to be considered "sample code", a Type B Deliverable, and is delivered "as-is" to the user. Twilio bears no responsibility to support the use or implementation of this software. In using this project, you are assuming ownership over the code and its implementation.
+
+For bug reports and feature requests, please submit a Github Issue.
+
+This solution is provided to demonstrate how to translate the events from task router into the converstions model for flex insights and is not designed for scale. Anyone using this project should consider challenges with consuming events out of order and at large volumes.
 
 # Deploying to heroku
 
@@ -34,8 +40,8 @@ This project is provided 'as is' to demonstrate how data can be transformed and 
 1. Create event streams sink to point to either your heroku `https://<HEROKU_APP_NAME>.herokuapp.com/events` or ngrok domain `https://<subdomain>.ngrok.io/events`
 2. Create event streams subscription for taskrouter (v2) events
 
-   - task-queue.entered
-   - task.transfer-initiated
+
+   *Reservation*
    - reservation.created
    - reservation.accepted
    - reservation.rejected
@@ -44,12 +50,25 @@ This project is provided 'as is' to demonstrate how data can be transformed and 
    - reservation.rescinded
    - reservation.wrapup
    - reservation.completed
+
+   *Task*
    - task.canceled
    - task.transfer-failed
+   - task.transfer-initiated
+
+   *Task Queue*
+   - task-queue.entered
+
+   *Worker*
+   - worker.activity.update
+   - worker.created
+   - worker.deleted
+   - worker.attributes.update
 
 # change log
 
 v0.0.1 - initial release
+v0.0.2 - added support for agent data, updated readme
 
 ## Code of Conduct
 

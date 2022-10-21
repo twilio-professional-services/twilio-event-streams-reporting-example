@@ -5,6 +5,43 @@ block content
   
   doctype html    
 
+  h2 agent data
+  table(style='width:100%', border='1')
+    tr
+      th agent_id
+      th joined
+      th left
+      th email
+      th external_id
+      th roles
+      th team_name
+      th department_name
+      th manager
+      th email
+      th status
+
+
+    if (agents.length == 0)
+      h3 no data yet...
+    else
+      each n in agents
+        tr
+          td= n.agent_uuid.slice(0, 10)
+          td= dateFormatter.format(n.date_joined) 
+          //td= dateFormatter.format(n.date_left)
+          td= n.date_left
+          td= n.email
+          td= n.agent_id
+          td= n.role
+          td= n.team_name
+          td= n.department_name
+          td= n.manager
+          td= n.email
+          td= n.state
+
+
+
+  h2 conversations data
   table(style='width:100%', border='1')
     tr
       th conv_id
@@ -13,16 +50,18 @@ block content
       th res_sid
       th date
       th time
+      th activity 
+      th activity_time
       th aband
-      th a_phase
-      th a_time
+      th aband_phase
+      th aband_time
       th queue_time
       th ring_time
       th talk_time
       th wrapup_time
 
     if (conversations.length == 0)
-      h2= "No Data Yet"
+      h3 no data yet...
     else
       each n in conversations
         tr
@@ -32,6 +71,8 @@ block content
           td= n.reservation_sid.slice(0,10)
           td= dateFormatter.format(n.date)
           td= timeFormatter.format(n.time)
+          td= n.activity
+          td= n.activity_time
           td= n.abandoned
           td= n.abandoned_phase
           td= n.abandon_time
