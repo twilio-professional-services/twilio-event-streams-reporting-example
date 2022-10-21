@@ -3,7 +3,6 @@ var trEvents = app.get("trEvents");
 var conversations = app.get("conversations");
 var agents = app.get("agents");
 var uuid = require('uuid').v4;
-const e = require('express');
 var express = require("express");
 var logTaskRouter = require("debug")("event-streams-backend:tr-event");
 var logConversation = require("debug")("event-streams-backend:conversations");
@@ -32,8 +31,8 @@ const CONVO_CORRUPTED = "CORRUPTED CONVERSATION"; //TO-DO
 const CONVO_REJECTED = "REJECTED CONVERSATION";
 const CONVO_MISSED = "MISSED CONVERSATION";
 const CONVO_REVOKED = "REVOKED CONVERSATION";
-const AGENT_STATUS = "AGENT STATUS"; //TO-DO
-const AGENT_STATUS_IN_PROGRESS = "AGENT STATUS IN PROGRESS"; //TO-DO
+const AGENT_STATUS = "AGENT STATUS"; 
+const AGENT_STATUS_IN_PROGRESS = "AGENT STATUS IN PROGRESS";
 
 // EVENT PRODUCT TYPES
 const TASKROUTER = 'com.twilio.taskrouter';
@@ -234,7 +233,8 @@ const insertOrUpdateAgent = (currentEvent, insert, status) => {
       logAgents(agents.insert({
         ...agentUpdateEntry,
         date_joined: new Date(timestamp).setMilliseconds(0),
-        state: status
+        state: status,
+        date_left
       }));
     } else {
       agentsEntry = getAgentEntry(agentUpdateEntry.agent_uuid);
