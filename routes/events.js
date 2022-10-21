@@ -53,6 +53,9 @@ const logCloudEvent = (cloudEvent, index) => {
   logeventStream("id: ", cloudEvent.id);
   logeventStream("type: ", cloudEvent.type);
   logeventStream("index: ", index);
+  if(cloudEvent.data?.test_id){
+    logeventStream("test-id", cloudEvent.data.test_id);
+  }
 }
 
 // identify the last entry event preceeding the current exit event by timestamp
