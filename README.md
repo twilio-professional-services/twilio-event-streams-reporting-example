@@ -28,28 +28,29 @@ This solution is provided to demonstrate how to translate the events from task r
 
 # Deploying locally
 
-1. Clone repository using `git clone https://github.com/jhunter-twilio/twilio-event-streams-reporting-example.git`
+1. Clone repository using `git clone https://github.com/twilio-professional-services/twilio-event-streams-reporting-example.git`
 2. run `npm install`
 3. clone the .env.sample to .env
-4. update .env as approproate, descriptions above
-5. run `ngrok http -subdomain=<preferred-subdomain> 3000`
+4. update .env as appropriate, descriptions above
+5. run `ngrok http --domain=<preferred domain> 3000`
 6. start server using `npm start`
 
 # dependencies
 
-1. Create event streams sink to point to either your heroku `https://<HEROKU_APP_NAME>.herokuapp.com/events` or ngrok domain `https://<subdomain>.ngrok.io/events`
+1. Create event streams sink to point to either your heroku `https://<HEROKU_APP_NAME>.herokuapp.com/events` or ngrok domain `https://<ngrok domain>/events`
+   - Method: POST
 2. Create event streams subscription for taskrouter (v2) events
 
 
    *Reservation*
-   - reservation.created
    - reservation.accepted
-   - reservation.rejected
-   - reservation.timeout
    - reservation.canceled
-   - reservation.rescinded
-   - reservation.wrapup
    - reservation.completed
+   - reservation.created
+   - reservation.rejected
+   - reservation.rescinded
+   - reservation.timeout
+   - reservation.wrapup
 
    *Task*
    - task.canceled
@@ -61,9 +62,9 @@ This solution is provided to demonstrate how to translate the events from task r
 
    *Worker*
    - worker.activity.update
+   - worker.attributes.update
    - worker.created
    - worker.deleted
-   - worker.attributes.update
 
 # change log
 
