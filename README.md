@@ -10,7 +10,7 @@ As Open Source Software from Twilio Professional Services, this project is not s
 
 For bug reports and feature requests, please submit a Github Issue.
 
-This solution is provided to demonstrate how to translate the events from task router into the converstions model for flex insights and is not designed for scale. Anyone using this project should consider challenges with consuming events out of order and at large volumes.
+This solution is provided to demonstrate how to translate the events from task router into the conversations model for flex insights and is not designed for scale. Anyone using this project should consider challenges with consuming events out of order and at large volumes.
 
 # Deploying to heroku
 
