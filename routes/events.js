@@ -178,7 +178,7 @@ const getRingTimeForEvent = (currentEvent) => {
 
 const getTalkTimeForCompletedEvent = (currentEvent) => {
   var { reservation_sid, timestamp: completedTimestamp } = currentEvent.payload;
-  var { timestamp: wrapupTimestamp } = getWrapupEventForReservation(reservation_sid)?.payload
+  var { timestamp: wrapupTimestamp } = getWrapupEventForReservation(reservation_sid)?.payload || {};
   var { timestamp: acceptedTimestamp } = getAcceptedEventForReservation(reservation_sid)?.payload
 
   var acceptedTime = new Date(acceptedTimestamp).setMilliseconds(0);
@@ -196,7 +196,7 @@ const getTalkTimeForCompletedEvent = (currentEvent) => {
 
 const getWrapupTimeForCompletedEvent = (currentEvent) => {
   var { reservation_sid, timestamp: completedTimeStamp } = currentEvent.payload;
-  var { timestamp: wrapupEventTimeStamp } = getWrapupEventForReservation(reservation_sid)?.payload
+  var { timestamp: wrapupEventTimeStamp } = getWrapupEventForReservation(reservation_sid)?.payload || {};
 
   // if there was no wrapup time return 0
   // otherwise calculate it 
@@ -359,7 +359,7 @@ const generateDefaultSegmentWithCustomData = (currentEvent) => {
     conversation_id: custom_data?.conversation_id || task_sid || worker_sid || uuid(),
     segment_external_id: task_sid || worker_sid || uuid(),
     // this doesnt actually exist on the flex insights data model
-    // or of it does it is behind the scenes 
+    // or if it does it is behind the scenes 
     // but is required to match the conversation in progress to the
     // correct reservation completed event.
     reservation_sid: reservation_sid || '',
